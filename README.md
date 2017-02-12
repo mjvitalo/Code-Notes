@@ -265,3 +265,123 @@ See:
    - http://stackoverflow.com/questions/12393562/c-access-once
    - https://lwn.net/Articles/508991/
    - McKenney, pg 115
+
+# Processor usage
+Logic is from: http://stackoverflow.com/questions/3017162/how-to-get-total-cpu-usage-in-linux-c.
+```C++
+// g++ -std=c++11 main.cpp to compile
+// run by:  "watch ./a.out"
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <algorithm>
+#include <cstdlib>
+#include <memory>
+#include <iterator>
+#include <thread>
+#include <chrono>
+#include <cmath>
+ 
+enum cpu_usage
+{
+  user_mode = 0,
+  user_mode_low_prio,
+  system_mode,
+  idle,
+  iowait,
+  irq,
+  soft_irq,
+  steal,
+  guest
+};
+
+enum class totals
+{
+  jiffies = 0, system_usage, io_irq, steal, guest
+};
+ 
+typedef std::tuple< double, double, double, double, double > tuple;
+ 
+template< totals val >
+double difference( tuple& t2, tuple& t1 )
+{
+  const int which = static_cast<int>(val);
+  return std::fdim(std::get<which>(t2), std::get<which>(t1)); 
+}
+
+tuple cpu_load()
+{
+   // Read the first line in /pro/stat to get the values  we need.
+   std::string cpu_stats;
+   std::fstream sys_stats( "/proc/stat", std::ios::in );
+   std::getline( sys_stats, cpu_stats );
+ 
+   // Strip of the leading " cpu ", 5 characters, that is present on the first
+   // line when you cat "/proc/stat".
+   cpu_stats = cpu_stats.substr( 5 );
+   std::istringstream stream(cpu_stats);
+   std::vector<double> values(
+     (std::istream_iterator<double>(stream)),
+     (std::istream_iterator<double>()));
+ 
+    if( values.size() <= cpu_usage::guest )
+    {
+    std::cerr << "/proc/stat has unanticipated format: only "
+        << values.size() << " columns.\n";
+    exit(EXIT_FAILURE);
+    }
+ 
+    // The values are how many jiffies spent in:  user mode, user mode with low
+    // priority, system mode, idle, iowait, irq, softirq, steal, guest.
+    auto total_jiffies = std::accumulate( values.begin(), values.end(), 0);
+ 
+    auto system_usage = values[cpu_usage::user_mode] +
+                    values[cpu_usage::user_mode_low_prio] +
+                    values[cpu_usage::system_mode] +
+                    values[cpu_usage::irq] +
+                    values[cpu_usage::soft_irq];
+ 
+    auto io_irq = values[cpu_usage::irq] +
+              values[cpu_usage::iowait] +
+              values[cpu_usage::soft_irq];
+ 
+    // "steal" is stolen time: the time spent in other operating systems when
+    // running in a virtualized environment.
+    auto steal = values[cpu_usage::steal];
+ 
+    // "guest" is the ninth value, it is the time spent funning a virtual CPU
+    // for a guest operating system.
+    auto guest = values[cpu_usage::guest];
+ 
+    return std::make_tuple( total_jiffies, system_usage, io_irq, steal, guest );
+}
+
+int main( int argc, char** argv )
+{
+  auto time1 = cpu_load();
+  std::this_thread::sleep_for( std::chrono::seconds(1) );
+  auto time2 = cpu_load();
+ 
+  auto total  = difference<totals::jiffies>(time2, time1);
+  auto work   = difference<totals::system_usage>(time2, time1);
+  auto io_irq = difference<totals::io_irq>(time2, time1);
+  auto stole  = difference<totals::steal>(time2, time1);
+  auto guest  = difference<totals::guest>(time2, time1);
+  auto percent = (work/total)*100;
+  std::cout << "CPU Load: " << percent << "\n";
+ 
+  if( io_irq )
+    std::cout << "CPU time waiting for IO & irq handling "
+            << (io_irq/total)*100 << "%\n";
+ 
+  if( stole )
+    std::cout << "CPU percent used for another VM: " << (stole/total)*100;
+ 
+  if( guest )
+    std::cout << "CPU percent used for running a guest OS: " << (guest/total)*100;
+ 
+  return EXIT_SUCCESS;
+}
+```
+
