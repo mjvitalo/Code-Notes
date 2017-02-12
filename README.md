@@ -34,3 +34,55 @@ http://www.boost.org/doc/libs/1_62_0/doc/html/lockfree.html
 Herb Sutter's proposal for atomic shared pointers has a  correct  and  ABA safe  implementation  of  a thread safe  singly  linked  list  that supports insert/erase at the front only (like a stack) but also supports finding values in the list. It is written entirely in portable C++ 11, except only that it uses the paper’s proposed atomic\<shared_ptr\<Node\>\>, which is discussed below.
 
 http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4058.pdf
+
+
+# Hardware Transactional Memory
+
+[C++ Transactional Memory](http://en.cppreference.com/w/cpp/language/transactional_memory)
+
+The idea behind hardware transactional memory is to allow two cores to execute code speculatively if they touch global state, and both should always succeed unless they touch the same bit of global state. For example, if two cores are updating entries in a tree, both will read from the root to a leaf and then each will modify one leaf. In a traditional locking model, you might have a single lock for the entire tree, so that accesses are serialized. With a transactional approach, each starts a transaction, walks to the desired node, and then updates it. The transactions would always succeed, unless both cores tried to update the same node.
+
+In this case, the hardware keeps track of which cache lines have been read from and which have been written to. If another core reads the same cache line addresses as you do, there's no conflict. If either writes to a cache line that another has read or written to, then there's a conflict, and one of the transactions will fail. (Which one fails is defined by implementation.)
+
+Easy to use synchronization construct
+  -As easy to use as coarse-grain locks
+  -Programmer declares, system implements
+
+Often performs as well as fine-grain locks
+   - Automatic read-read concurrency & fine-grain concurrency
+
+Failure atomicity & recovery
+   -No lost locks when a thread fails
+   -Failure recovery = transaction abort + restart
+
+Composability
+  - Safe & scalable composition of software modules
+  
+```C++
+#include <iostream>
+#include <vector>
+#include <thread>
+int f()
+{
+    static int i = 0;
+    synchronized { // begin synchronized block
+        std::cout << i << " -> ";
+        ++i;       // each call to f() obtains a unique value of i
+        std::cout << i << '\n';
+        return i; // end synchronized block
+    }
+}
+int main()
+{
+    std::vector<std::thread> v(10);
+    for(auto& t: v)
+        t = std::thread([]{ for(int n = 0; n < 10; ++n) f(); });
+    for(auto& t: v)
+        t.join();
+}
+```
+References
+
+    - http://www.cs.cmu.edu/afs/cs/academic/class/15418-s12/www/lectures/20_transactionalmem.pdf
+    - http://www.quepublishing.com/articles/article.aspx?p=2142912
+    - http://en.cppreference.com/w/cpp/language/transactional_memory
