@@ -87,3 +87,108 @@ References
     - http://www.cs.cmu.edu/afs/cs/academic/class/15418-s12/www/lectures/20_transactionalmem.pdf
     - http://www.quepublishing.com/articles/article.aspx?p=2142912
     - http://en.cppreference.com/w/cpp/language/transactional_memory
+
+# Handle Signals
+Block signals on all threads so we don't have to worry about interrupted system calls and can be predictable about what thread will handle a signal.
+```C++
+// Block signals on all threads we create so that we don't
+// have to worry about interrupted system calls and such things.
+// Handle our signals in a thread in keeping with best practices
+// for using signal with threads. See Butenhof, pg. 229.
+//
+// boost::asio::detail::posix_signal_blocker block_all_signals; // boost example to block everything.
+//
+// sigset_t new_mask, old_mask_; // Manual block everything.
+// sigfillset(&new_mask);
+// const bool blocked_ = (pthread_sigmask(SIG_BLOCK, &new_mask, &old_mask_) == 0);
+ 
+// Block a few signals and listen for them via sigwait().
+sigset_t oldmask{}, mask{};
+sigemptyset(&mask);
+sigaddset(&mask, SIGINT);
+sigaddset(&mask, SIGQUIT);
+sigaddset(&mask, SIGTERM);
+sigaddset(&mask, SIGUSR1);
+int err{};
+if( (err = pthread_sigmask(SIG_BLOCK, &mask, &oldmask )) != 0 )
+{
+  perror("unable to set signal mask");
+  exit(EXIT_FAILURE);
+}
+ 
+auto signal_handler = [](sigset_t& mask){
+  int err{}, signo{};
+  // Always use sigwait to work with asynchronous signals within
+  // threaded code. [Butenhof, pg. 227] Synchronous signals include
+  // SIGFPE, SIGSEGV, and SIGTRAP and are delivered to the thread
+  // that caused the hardware exception always, regardless.
+  err = sigwait( &mask, &signo );
+  if( err )
+  {
+    perror("Failure waiting on signals.");
+    std::abort();
+  }
+  switch( signo ){
+    case SIGINT:
+    case SIGQUIT:
+    case SIGTERM:
+      exit_signal_handler(signo);
+      break;
+    default:
+      psignal( signo, "Unexpected signal received." );
+      exit(EXIT_FAILURE);
+  }
+  };
+std::thread sig_handler( signal_handler, std::ref(mask) );
+sig_handler.detach();
+```
+or with Boost perhaps you can do the following
+```C++
+#include <boost/asio.hpp>
+#include <signal.h>
+// Block signals on all threads we create so that we don't
+// have to worry about interrupted system calls and such things.
+// Handle our signals in a thread in keeping with best practices
+// for using signal with threads. See Butenhof, pg. 229.
+boost::asio::detail::posix_signal_blocker block_all_signals;
+ 
+auto signal_handler = [](boost::asio::io_service& io_service ){
+   sigset_t mask{};
+   sigemptyset(&mask);
+   sigaddset(&mask, SIGINT);
+   sigaddset(&mask, SIGQUIT);
+   sigaddset(&mask, SIGTERM);
+   int err{}, signo{};
+   // Always use sigwait to work with asynchronous signals within
+   // threaded code. [Butenhof, pg. 227] Synchronous signals include
+   // SIGFPE, SIGSEGV, and SIGTRAP and are delivered to the thread
+   // that caused the hardware exception always, regardless.
+   err = sigwait( &mask, &signo );
+   if( err )
+   {
+     perror("Failure waiting on signals.");
+     std::abort();
+   }
+   switch( signo ){
+      case SIGINT:
+      case SIGQUIT:
+      case SIGTERM:
+        io_service.stop();
+        break;
+      default:
+        psignal( signo, "Unexpected signal received." );
+        exit(EXIT_FAILURE);
+    }
+};
+ 
+daemon(0,0);
+boost::asio::io_service io_service;
+std::thread sig_handler(signal_handler, std::ref(io_service));
+sig_handler.detach();
+ 
+// We have on acceptor listening for connection attemps.
+tcp_acceptor server(io_service);
+ 
+// Run until SIGINT or SIGTERM is received.
+io_service.run();
+```
