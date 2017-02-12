@@ -1,4 +1,5 @@
 # Code-Notes
+Examples and explanations from different sources and experts about techniques I have found useful.
 
 # C++
 Improvements from using C++14: https://kfrlib.com/blog/how-c14-and-c17-help-to-write-faster-and-better-code-real-world-examples/
