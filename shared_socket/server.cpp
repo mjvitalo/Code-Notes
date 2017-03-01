@@ -1,5 +1,5 @@
 // http://stackoverflow.com/questions/670891/is-there-a-way-for-multiple-processes-to-share-a-listening-socket
-//g++ -std=c++14 server.cpp -o server -l boost_system  -lpthread
+// g++ -std=c++14 server.cpp -o server -l boost_system  -lpthread
 #include <cstdlib>
 #include <iostream>
 #include <boost/asio.hpp>
