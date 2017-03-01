@@ -1,0 +1,58 @@
+This is example C++ code to do what is given as an example in python from:
+http://stackoverflow.com/questions/670891/is-there-a-way-for-multiple-processes-to-share-a-listening-socket
+
+From that discussion Anil write:
+
+Note that there are indeed two process id's listening [when you run the server]:
+$ lsof -i :8888
+
+Here are the results from running telnet and the program:
+
+$ telnet 127.0.0.1 8888
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+Thank you for your connecting to parent
+Connection closed by foreign host.
+$ telnet 127.0.0.1 8888
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+Thank you for your connecting to child
+Connection closed by foreign host.
+$ telnet 127.0.0.1 8888
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+Thank you for your connecting to parent
+Connection closed by foreign host.
+
+$ python prefork.py 
+Got connection from in parent
+Got connection from in child
+Got connection from in parent
+
+----------------------------------------------------------------------
+import socket
+import os
+
+def main():
+    serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    serversocket.bind(("127.0.0.1", 8888))
+    serversocket.listen(0)
+
+    # Child Process
+    if os.fork() == 0:
+        accept_conn("child", serversocket)
+
+    accept_conn("parent", serversocket)
+
+def accept_conn(message, s):
+    while True:
+        c, addr = s.accept()
+        print 'Got connection from in %s' % message
+        c.send('Thank you for your connecting to %s\n' % message)
+        c.close()
+
+if __name__ == "__main__":
+    main()
