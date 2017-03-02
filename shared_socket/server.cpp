@@ -9,7 +9,7 @@ int main()
 {
   using boost::asio::ip::tcp;
   boost::asio::io_service io_service; 
-  tcp::acceptor acceptor(io_service, tcp::endpoint(tcp::v4(), 2222));
+  tcp::acceptor acceptor(io_service, tcp::endpoint(tcp::v4(), 8888));
 
   const std::string msg = fork() ? "hello from parent" : "hello from child";
 
