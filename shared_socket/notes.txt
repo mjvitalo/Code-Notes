@@ -1,4 +1,4 @@
-This is example C++ code to do what is given as an example in python from:
+Server.cpp is some example C++ code to do what is given as an example in python from:
 http://stackoverflow.com/questions/670891/is-there-a-way-for-multiple-processes-to-share-a-listening-socket
 
 From that discussion Anil wrote:
