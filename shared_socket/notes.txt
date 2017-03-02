@@ -1,7 +1,7 @@
 This is example C++ code to do what is given as an example in python from:
 http://stackoverflow.com/questions/670891/is-there-a-way-for-multiple-processes-to-share-a-listening-socket
 
-From that discussion Anil write:
+From that discussion Anil wrote:
 
 Note that there are indeed two process id's listening [when you run the server]:
 $ lsof -i :8888
