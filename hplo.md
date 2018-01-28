@@ -2,7 +2,7 @@
 
 **The High Performing Learning Organization**
 
-[Raphael L. Vitalo](../common/meet_experts.php#ray), [James. S. Byron,](../common/meet_experts.php#jim) [Patricia V. Bierley](../common/meet_experts.php#patty), and Christopher Holmberg
+[Raphael L. Vitalo](http://vitalentusa.com/common/meet_experts.php#ray), [James. S. Byron,](http://vitalentusa.com/common/meet_experts.php#jim) [Patricia V. Bierley](http://vitalentusa.com/common/meet_experts.php#patty), and Christopher Holmberg
 
 
 **Contents**
@@ -45,12 +45,9 @@
 
 **[Bibliography](#refs)**
 
-**[Feedback _Please_](#feedback)**
-
 **Introduction**
 
 [![](../images/kdrs_tools_ad.gif)](../products/kdrs/kdrs_learn_about.php)
-
  
 
 Two threads, high performance and learning, wind their way through the business literature of the past several decades.[1](#FOOTNOTE1) The authors canvassed this literature, traced the snaking of these threads, and observed how they crossed and looped with each other to form a single fabric. That fabric is the high performing learning organization (HPLO). This report summarizes our findings. While these findings are rooted in the literature we reviewed, they provide a creative synthesis of its contents that simplifies the HPLO model to its fundamental ideas. Reduced to its basics, an HPLO has one essential component and is ruled by three principles alone. The essential component is people. The three principles talk about who these people are, what they focus on, and how they view what surrounds them. Together, they provide a refreshingly simple perspective with disturbingly dramatic implications. The simplicity clears the clutter from our minds and focuses our thinking. To gauge a firm's capabilities to create its success—as opposed to being successful by virtue of industry or market conditions or macroeconomic forces—it directs us to evaluate ourselves, the people who embody it, give it life, and make it a reality. We are the determiners of its success because we are the originators and implementers of every action it undertakes. As well, we are the only responsible component of a firm that can extract learning from our conduct and use it to improve our performance.
