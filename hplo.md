@@ -564,11 +564,11 @@ establishing a yearly planning and renewal process that integrates vertically an
 
 The beginning and end of an HPLO is people—people with the "right" stuff. These aligned, teamed, energized, capable, and pioneering individuals work collectively to conceive a business intent consistent with their personal core values and cognizant of the dynamics that drives the industry, regions, and markets within which they seek to do commerce. From this base, they construct an enterprise and focus themselves singularly on maximizing its success through learning. Together, they learn, achieve, and periodically renew their concept, design, and execution of commerce and hone their enterprise into providing their customers extraordinary value as defined by the customers and extraordinary benefits to all their stakeholders. As a result of their efforts, they change markets, impact industries, and transform how commerce is done. Their impact becomes the benchmark others turn to for new ideas and new sources of success.
 
-[View Graphic of Model](../images/hplo_model.gif)
+[View Graphic of Model](http://vitalentusa.com/images/hplo_model.gif)
 
  
 
-[Download PDF of Article](the_hplo_model.pdf)
+[Download PDF of Article](http://vitalentusa.com/learn/the_hplo_model.pdf)
 
 ![](../images/icon_acrobat.gif)
 
