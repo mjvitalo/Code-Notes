@@ -409,7 +409,7 @@ The thread safe interface is detailed in this paper http://www.cs.wustl.edu/~sch
     self-deadlock problem outlined above, additional overhead will be
     incurred to acquire and release the lock multiple times across intra-
     component method calls.
-```
+```C++
 #include <thread>
 #include <cstdlib>
 #include <mutex>
@@ -502,7 +502,7 @@ Herb Sutter's Concurrent<T> https://channel9.msdn.com/Shows/Going+Deep/C-and-Bey
   
 # Parametrized Construction and Destruction in Smart Pointers: shared_ptr<> array
 ## Constructing a std::unique_ptr<> with a deleter.
-```
+```C++
 template <typename T, typename D, typename ...Args>
 std::unique_ptr<T,D> make_unique_with_deleter( D deleter, Args&&...args )
 {
@@ -513,12 +513,12 @@ std::unique_ptr<T,D> make_unique_with_deleter( D deleter, Args&&...args )
 ```
 
 ## Shared pointer to array
-```
+```C++
 std::shared_ptr<int> sp( new int[10], std::default_delete<int[]>() );
 ```
 
 ## With std::unique_ptr<>
-```
+```C++
 #include <cstdio>
 #include <string>
 #include <memory>
@@ -580,7 +580,7 @@ int main( int, char*\[\] )
 # Errors
 
 The header <system_error> defines types and functions used to report error conditions originating from the operating system, streams I/O, std::future, or other low-level APIs.
-```
+```C++
 #include <system_error>
 #include <string>
 #include <iostream>
@@ -608,7 +608,7 @@ From here:
     nphysical/g | grep -v ^$ | sort | uniq | wc -l
     Also this helps to see the processor, core, socket relationship:    egrep "(( id|processo).*:|^ *$)" /proc/cpuinfo
     There is a */sys* interface also: /sys/devices/system/cpu
-```
+```C++
 #include <sched.h>
  
 void report_num_cpus()
@@ -630,7 +630,7 @@ void report_num_cpus()
 # Processor usage
 
 Logic is from: http://stackoverflow.com/questions/3017162/how-to-get-total-cpu-usage-in-linux-c
-```
+```C++
 // g++ -std=c++0x main.cpp to compile
 // run by:  "watch ./a.out"
 #include <iostream>
@@ -749,7 +749,7 @@ int main( int argc, char** argv )
 
 # JSON example
 With the normal C++ json library you can just write normal C++: Json can be treated as string literals, or STL like containers (https://github.com/nlohmann/json/#stl-like-access), with ease.
-```
+```C++
 #include <sstream>
 #include "json.hpp" // Normal C++ Json Library: https://github.com/nlohmann/json/
                     // https://github.com/nlohmann/json/#examples
@@ -789,7 +789,7 @@ void example() {
 reference : https://github.com/nlohmann/json/#examples
 
 # UTF 8 Handling
-```
+```C++
 #include <iostream>
 #include <string>
 #include <locale>
@@ -826,7 +826,7 @@ int main()
 # File Writer
 boost::asio::posix::stream_descriptor can be initialized with a file descriptor to start an non-blocking I/O operation on that file descriptor. In the example, stream is linked to the file descriptor STDOUT_FILENO to write a string asynchronously to the standard output stream.
 Posix Stream Descriptor
-```
+```C++
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/posix/stream_descriptor.hpp>
 #include <boost/asio/write.hpp>
@@ -851,7 +851,7 @@ int main()
 ```
 
 # ASIO & Threads
-```
+```C++
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <chrono>
@@ -885,7 +885,7 @@ int main()
 Some simple example code of sharing a socket between two (or more) processes. parent process would call bind(), listen() etc, the child processes would just process requests by accept(), send(), recv() etc. This is just an example to show some networking code.
 
 http://stackoverflow.com/questions/670891/is-there-a-way-for-multiple-processes-to-share-a-listening-socket
-```
+```C++
 #include <cstdlib>
 #include <iostream>
 #include <boost/asio.hpp>
@@ -913,7 +913,7 @@ int main()
 # Leaky Bucket
 The leaky bucket is an algorithm that may be used to determine whether some sequence of discrete events conforms to defined limits on their average and peak rates or frequencies. Wikipedia: https://en.wikipedia.org/wiki/Leaky_bucket
 
-```
+```C++
 namespace lb // leaky bucket
 {
   // Class std::chrono::steady_clock represents a monotonic clock.
@@ -952,5 +952,168 @@ namespace lb // leaky bucket
  
     return tb.time_stamp_ = clock::now(), tb.tokens_;
   }
+}
+```
+# Fold Expressions
+http://en.cppreference.com/w/cpp/language/fold
+```C++
+#include <future>
+#include <iostream>
+#include <iostream>
+#include <vector>
+#include <climits>
+#include <cstdint>
+#include <type_traits>
+#include <utility>
+ 
+template<typename... Args>
+void log(Args&&... args) {
+    (std::cout <<  ...  << args) << std::endl;
+}
+ 
+template<typename... Args>
+std::future<void> log_async(Args&&... args) {
+  return std::async(std::launch::async, [args...] { log(args...); });
+}
+     
+template<typename T, typename... Args>
+void push_back_vec(std::vector<T>& v, Args&&... args)
+{
+    (v.push_back(args), ...);
+}
+  
+// Compile-time endianness swap based on http://stackoverflow.com/a/36937049
+// "The advantage of this form is that because it doesn't use loops or recursion,
+// you're pretty much guaranteed to get optimal assembly output - on x86-64,
+// clang even manages to work out to use the bswap instruction."
+template<class T, std::size_t... N>
+constexpr T bswap_impl(T i, std::index_sequence<N...>) {
+  return (((i >> N*CHAR_BIT & std::uint8_t(-1)) << (sizeof(T)-1-N)*CHAR_BIT) | ...);
+}
+ 
+template<class T, class U = std::make_unsigned_t<T>>
+constexpr U bswap(T i) {
+  return bswap_impl<U>(i, std::make_index_sequence<sizeof(T)>{});
+}
+ 
+int main()
+{
+    auto f = log_async(1, 2, 3);
+    f.wait();
+ 
+    std::vector<int> v;
+    push_back_vec(v, 6, 2, 45, 12);
+    push_back_vec(v, 1, 2, 9);
+    for (int i : v) std::cout << i << ' ';
+ 
+    static_assert(bswap<std::uint16_t>(0x1234u)==0x3412u);
+    static_assert(bswap<std::uint64_t>(0x0123456789abcdefULL)==0xefcdab8967452301ULL);
+}
+```
+# Subexpressions of an initialization list expression are evaluated in order.
+```C++
+int a[] = {get1(), get2()} will execute get1 before executing get2. We use the comma operator below to support operations which do not return a value.
+//To call do() on every argument, I can do something like this:
+template <class... Args>
+void doSomething(Args... args) {
+    int x[] = {(args.do(), 0)...};
+}
+ 
+// To do more complex things, you can put them in another function:
+template <class Arg>
+void process(Arg arg, int &someOtherData) {
+    // You can do something with arg here.
+}
+ 
+template <class... Args>
+void doSomething(Args... args) {
+    int someOtherData;
+    int x[] = {(process(args, someOtherData), 0)...};
+}
+```
+Source: http://stackoverflow.com/questions/7230621/how-can-i-iterate-over-a-packed-variadic-template-argument-list
+
+# Memory Barriers
+
+Nice description here: http://lwn.net/Articles/576486/
+
+Note the memory model of the Linux Kernel is different when compared to the memory model of C++11/C11, which is more relaxed, see:
+
+    http://lwn.net/Articles/691128/ - "The C11 model is based on acquire/release semantics — one-way barriers that are described in the 2014 article and this article. Much of the kernel, instead, makes use of load/store barriers, which are stricter, two-way barriers."
+    http://infolab.stanford.edu/pub/cstr/reports/csl/tr/95/685/CSL-TR-95-685.pdf
+    http://www.cl.cam.ac.uk/~pes20/weakmemory/index.html
+
+# Atomic Shared Pointer
+Atomic smart pointers are described in https://isocpp.org/files/papers/N4162.pdf (this is a small pdf and in appendix 5 - pg 9 - is a nice, simple, example) and are about making assignment of the pointer atomic, not just the reference counting, so that the following code can be written. Anthony Williams has an implementation here https://bitbucket.org/anthonyw/atomic_shared_ptr.
+
+Having this ability has have made addressing the contention issues on MP much easier (as in we can just change the type in the std:vector<> we use, and eliminate many lines of code). This strategy also motivated the recent performance change on PSEMS, where we also could benefit from this approach in the future. A second example is here also.
+Atomic smart pointers
+```C++
+// g++ -std=cs++14 -lpthread ./main.cpp -I./
+#include <thread>
+#include <array>
+#include <atomic>
+#include <vector>
+#include <iostream>
+#include <string>
+#include <cstring>
+namespace
+{
+  constexpr size_t buf_sz = 1024*1024;
+  using buffer_t = std::shared_ptr<uint8_t>;
+  using buffer_list_t = std::array< buffer_t, 25 >;
+}
+ 
+void producer( std::atomic<bool>& run, const unsigned id, buffer_list_t& buffers )
+{
+  while( run )
+  {
+    buffer_t buf((uint8_t*)malloc(buf_sz), free); // Allocate a new buffer, say to hold a frame.
+    memset( buf.get(), 0xa, buf_sz );  // Write the data to it.
+    std::atomic_store(&buffers[id], buf); // Update the entry, say for the specific encoder.
+    std::this_thread::sleep_for( std::chrono::milliseconds{10} );
+  }
+}
+ 
+void consumer( std::atomic<bool>& run, const unsigned id, buffer_list_t& buffers )
+{
+  while( run )
+  {
+    // Here if buf is the last reference to this entry, because the producer updates
+    // the entry, then it will be cleaned up by the shared pointer destructor.
+    auto buf = std::atomic_load(&buffers[id]); // Get a pointer to the buffer.   
+     
+    if( buf )
+      memset( buf.get(), 0xb, buf_sz );  // Modify some data in it for fun.
+    else
+      std::cout << "no buffers yet for " << id << "\n";
+ 
+    std::this_thread::sleep_for( std::chrono::milliseconds{10} );
+  }
+}
+ 
+int main()
+{
+  std::vector<std::thread> threads;
+  std::atomic<bool> run{true};
+  buffer_list_t buffers;
+  size_t i = 0;
+ 
+  for( auto& b : buffers )
+  {
+    threads.push_back( std::thread( producer, std::ref(run), i, std::ref(buffers) ));
+    threads.push_back( std::thread( producer, std::ref(run), i, std::ref(buffers) ));
+ 
+    threads.push_back( std::thread( consumer, std::ref(run), i, std::ref(buffers) ));
+    threads.push_back( std::thread( consumer, std::ref(run), i, std::ref(buffers) ));
+    ++i;
+  }
+ 
+  std::this_thread::sleep_for( std::chrono::seconds(5) );
+  run = false;
+  for( auto& t : threads )
+    t.join();
+ 
+  return EXIT_SUCCESS;
 }
 ```
