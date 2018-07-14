@@ -1117,3 +1117,86 @@ int main()
   return EXIT_SUCCESS;
 }
 ```
+# Template Bridge: Not using inheritance but still enforcing an interface
+```C++
+#include <string>
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <cstdio>
+#include <iostream>
+#include <sstream>
+#include <memory>
+#include <experimental/source_location>
+#include <iomanip>
+#include <tuple>
+#include <cmath>
+#include <functional>
+#include <any>
+#include <typeindex>
+
+struct impl_a 
+{
+    void one() 
+    {
+        std::cout << "vp8\n";
+    }
+    ~impl_a() { std::cout << "impl_a destructor\n"; }
+};
+
+struct impl_b
+{
+    void set_level(const unsigned l) 
+    {
+        std::cout << "impl_b level now " << l << "\n";
+    }
+    
+    void one() 
+    {
+        std::cout << "impl_b\n";
+    }
+    
+    ~impl_b() { std::cout << "impl_b destructor\n"; }
+};
+
+template<typename impl>
+struct bridge
+{ 
+    mutable impl impl_;
+    
+    impl* operator->() const
+    {
+        return &impl_;
+    }
+      
+    ~bridge() {  }
+};
+
+template<typename T> 
+using bridge_ptr = std::shared_ptr<bridge<T>>;
+
+template<typename T>
+void dispatch_to(std::any& a, std::function<void(const bridge_ptr<T>& p)> f)
+{       
+    if(std::type_index(a.type()) == std::type_index(typeid(bridge_ptr<T>)))
+    {       
+        f(std::any_cast<bridge_ptr<T>>(a));
+    }
+}
+
+int main()
+{
+    std::vector<std::any> actors;
+        
+    actors.push_back(std::make_shared<bridge<impl_a>>());
+    actors.push_back(std::make_shared<bridge<impl_b>>());
+    
+    for(auto& e : actors)
+    {        
+        dispatch_to<impl_a>(e, [](const auto p) { (*p)->one(); });
+        dispatch_to<impl_b>(e, [](const auto p) { (*p)->set_level(2); });
+    }        
+ 
+    return 0;  
+}
+```
