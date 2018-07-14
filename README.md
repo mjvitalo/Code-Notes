@@ -384,4 +384,573 @@ int main( int argc, char** argv )
   return EXIT_SUCCESS;
 }
 ```
+# Thread Safe Interface Idiom
 
+The thread safe interface is detailed in this paper http://www.cs.wustl.edu/~schmidt/PDF/locking-patterns.pdf and is an approach to simplifying code and reducing lock contention. This approaches avoids dead locks. From the paper:
+
+    Multi-threaded components typically contain multiple inter-
+    face and implementation methods that perform computations
+    on state that is encapsulated by the component. Component
+    state is protected by a lock that prevents race conditions by
+    serializing methods in the component that access the state.
+    Component methods often call each other to carry out their
+    computations. In multi-threaded components with poorly de-
+    signed intra-component method invocation behavior, how-
+    ever, the following forces will be unresolved:
+    Avoid Self-deadlock:
+    Thread-safe components should be designed to avoid ‘self-deadlock.’
+    Self-deadlock will occur if one component method acquires a non-recursive
+    component lock and calls another method that tries to reacquire the
+    same lock.
+    Minimal locking overhead:
+    Thread-safe components should be designed to incur only the
+    minimal locking over-head necessary to prevent race conditions.
+    However, if a recursive component lock is selected to avoid the
+    self-deadlock problem outlined above, additional overhead will be
+    incurred to acquire and release the lock multiple times across intra-
+    component method calls.
+```
+#include <thread>
+#include <cstdlib>
+#include <mutex>
+#include <algorithm>
+#include <vector>
+#include <iostream>
+ 
+// Thread safe interface example.
+struct active_object
+{
+  using Guard = std::lock_guard<std::mutex>;
+ 
+  // Public methods acquire the lock and
+  // call to the private implementation methods
+  // passing the guard.
+  void do_work( const int& item )
+  {
+    Guard g(mutex_);
+    do_work( item, g );
+  }
+ 
+  private:
+ 
+  // Private methods are always be called with the lock
+  // held.
+  void do_work( const int& item, Guard& g)
+  {
+    // We are free to call any private method.
+    if( work_okay_to_do(item, g))
+    {
+      work_.push_back(item);
+    }
+    else
+    {
+      std::cout << "ignoring " << item << "\n";
+    }
+  }
+   
+  // Passing the guard ensures the lock is held: we
+  // know we are the only thread accessing the data.
+  bool work_okay_to_do( const int& item, Guard& ) const
+  {
+    return std::end(work_) ==
+      std::find(std::begin(work_), std::end(work_), item);
+  }
+ 
+  mutable std::mutex mutex_;
+  std::vector<int> work_;
+};
+ 
+void do_stuff(active_object& ao)
+{
+  for( auto a : {1,2,4,3,5})
+  {
+    ao.do_work(a);
+  }
+}
+ 
+int main()
+{
+  active_object busy_guy;
+  std::thread a( do_stuff, std::ref(busy_guy) );
+  std::thread b( do_stuff, std::ref(busy_guy) );
+  std::thread c( do_stuff, std::ref(busy_guy) );
+ 
+  a.join();
+  b.join();
+  c.join();
+ 
+  return EXIT_SUCCESS;
+}
+```
+
+# Concurrent<T> & Active Objects
+
+## Active Object
+The Active Object design pattern decouples method execution from method invocation to enhance concurrency and simplify synchronized access to an object that resides in its own thread of control.
+
+    What it is http://www.cs.wustl.edu/~schmidt/PDF/Act-Obj.pdf
+    Herb Sutter's take http://www.drdobbs.com/parallel/prefer-using-active-objects-instead-of-n/225700095
+    Herb Sutter's Concurrent<T> https://channel9.msdn.com/Shows/Going+Deep/C-and-Beyond-2012-Herb-Sutter-Concurrency-and-Parallelism and his slides https://onedrive.live.com/?cid=F1B8FF18A2AEC5C5&id=F1B8FF18A2AEC5C5%211176&parId=root&o=OneUp
+    Concurrent Object Wrappers https://juanchopanzacpp.wordpress.com/2013/03/01/concurrent-object-wrapper-c11/
+    Normal C++ Active Object Wrapper https://github.com/KjellKod/active-object
+
+## Concurrent<T>
+Aka "Active Object".
+
+Herb Sutter's Concurrent<T> https://channel9.msdn.com/Shows/Going+Deep/C-and-Beyond-2012-Herb-Sutter-Concurrency-and-Parallelism and his slides https://onedrive.live.com/?cid=F1B8FF18A2AEC5C5&id=F1B8FF18A2AEC5C5%211176&parId=root&o=OneUp
+  
+  
+# Parametrized Construction and Destruction in Smart Pointers: shared_ptr<> array
+## Constructing a std::unique_ptr<> with a deleter.
+```
+template <typename T, typename D, typename ...Args>
+std::unique_ptr<T,D> make_unique_with_deleter( D deleter, Args&&...args )
+{
+    return std::unique_ptr<T,D>(
+        new T( std::forward<Args>(args)... ),
+        std::move( deleter ) );
+}
+```
+
+## Shared pointer to array
+```
+std::shared_ptr<int> sp( new int[10], std::default_delete<int[]>() );
+```
+
+## With std::unique_ptr<>
+```
+#include <cstdio>
+#include <string>
+#include <memory>
+ 
+// Custom deleter for a pointer you would like to treat as an array.
+auto deleter = [](char*p){ my_equivalent_to_free(p); };
+std::unique_ptr<uint8_t*, decltype(deleter)> charup( (char*)(malloc(5), deleter);
+charup[0] = 'a';
+ 
+// std::unique pointer only invokes the destructor if the
+// pointer is non-null. std::shared_ptr<> always calls the
+// destructor.
+typedef std::unique_ptr<FILE> file_ptr;
+ 
+// boost::shared_ptr<> & std::shared_ptr<> will always call the destroy function,
+// and pclose() will segfault on NULL.
+void shared_pipe_destroy( void* p )
+{
+  if( p ) pclose( p );
+}
+ 
+// Note that you don't have to write a check close function
+// for different destroy, you can just write one using boost::bind
+// and pass the destroy function as a paremeter.
+// void checked_close( void* p, void (*f)(void*) );
+// shared_ptr<FILE> f( ..., boost::bind( checked_close, ... ));
+// or
+// shared_ptr<FILE> f( ..., []( void* p){ if(p) pclose(p); });
+ 
+void shared_file_close( void* p )
+{
+  if( p ) flclose( p );
+}
+ 
+void writeString( file_ptr fp, std::string s )
+{
+  fwrite( s.c_str(), sizeof(char), s.size(), fp.get() );
+}
+ 
+int main( int, char*\[\] )
+{
+  file_ptr fp( fopen("2003-smart-pointers-in-tr1.txt", "w"), shared_file_close );
+  writeString( fp, "Chocolate cake is awesome.\n" );
+  writeString( fp, "And so is banana bread!\n" );
+ 
+  std::string curl_request = ".....";
+  boost::shared_ptr<FILE> request( ::popen( curl_request.c_str(), "re" ), shared_pipe_destroy );
+  if( !request )
+  {
+      boost::system::error_code ec (errno, boost::system::system_category ());
+      LSError( lslog, "", "%s:%d popen - %s. Unable to execute provisioning request.\n",
+              __FUNCTION__, __LINE__, ec.message().c_str());
+  }
+ 
+  return 0; // No need to fclose, pclose the file here\!
+}
+```
+
+# Errors
+
+The header <system_error> defines types and functions used to report error conditions originating from the operating system, streams I/O, std::future, or other low-level APIs.
+```
+#include <system_error>
+#include <string>
+#include <iostream>
+  
+int main()
+{
+    // http://en.cppreference.com/w/cpp/error/system_error
+    const std::system_error err(errno, std::system_category());
+    std::cout << err.what() << '\n';
+     
+    // http://en.cppreference.com/w/cpp/error/error_condition
+    const std::error_condition e = make_error_condition(std::errc(errno));
+    if(e)
+      std::cout << "trouble";
+    std::cout << e.message() << "\n";
+}
+```
+
+# Count Cores & CPUs
+See http://www.richweb.com/cpu_info for details.
+From here:
+
+    Num of CPU Sockets: cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l
+    Total number of cores: cat /proc/cpuinfo | egrep "core id|physical id" | tr -d "\n" | sed s/physical/
+    nphysical/g | grep -v ^$ | sort | uniq | wc -l
+    Also this helps to see the processor, core, socket relationship:    egrep "(( id|processo).*:|^ *$)" /proc/cpuinfo
+    There is a */sys* interface also: /sys/devices/system/cpu
+```
+#include <sched.h>
+ 
+void report_num_cpus()
+{
+    cpu_set_t cs;
+    CPU_ZERO(&cs);
+    unsigned count(0);
+ 
+    // Won't adjust for hyperthreading: with hyperthreading
+    // it reports double the number of actual cores.
+    sched_getaffinity(0, sizeof(cs), &cs );
+    for( size_t i = 0; i < sizeof(cs); ++i )
+        if( CPU_ISSET(i, &cs) )
+            ++count;
+ 
+    std::cout << "Number of cpus: " << count << "\n";
+}
+```
+# Processor usage
+
+Logic is from: http://stackoverflow.com/questions/3017162/how-to-get-total-cpu-usage-in-linux-c
+```
+// g++ -std=c++0x main.cpp to compile
+// run by:  "watch ./a.out"
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <algorithm>
+#include <cstdlib>
+#include <memory>
+#include <iterator>
+#include <thread>
+#include <chrono>
+#include <cmath>
+ 
+enum cpu_usage
+{
+  user_mode = 0,
+  user_mode_low_prio,
+  system_mode,
+  idle,
+  iowait,
+  irq,
+  soft_irq,
+  steal,
+  guest
+};
+ 
+enum class totals
+{
+  jiffies = 0, system_usage, io_irq, steal, guest
+};
+ 
+typedef std::tuple< double, double, double, double, double > tuple;
+ 
+template< totals val >
+double difference( tuple& t2, tuple& t1 )
+{
+  const int which = static_cast<int>(val);
+  return std::fdim(std::get<which>(t2), std::get<which>(t1)); 
+}
+ 
+tuple cpu_load()
+{
+   // Read the first line in /pro/stat to get the values  we need.
+   std::string cpu_stats;
+   std::fstream sys_stats( "/proc/stat", std::ios::in );
+   std::getline( sys_stats, cpu_stats );
+ 
+   // Strip of the leading " cpu ", 5 characters, that is present on the first
+   // line when you cat "/proc/stat".
+   cpu_stats = cpu_stats.substr( 5 );
+   std::istringstream stream(cpu_stats);
+   std::vector<size_t> values(
+     (std::istream_iterator<size_t>(stream)),
+     (std::istream_iterator<size_t>()));
+ 
+    if( values.size() <= cpu_usage::guest )
+    {
+      std::cerr << "/proc/stat has unanticipated format: only "
+        << values.size() << " columns.\n";
+      exit(EXIT_FAILURE);
+    }
+ 
+    // The values are how many jiffies spent in:  user mode, user mode with low
+    // priority, system mode, idle, iowait, irq, softirq, steal, guest.
+    auto total_jiffies = std::accumulate( values.begin(), values.end(), 0);
+ 
+    auto system_usage = values[cpu_usage::user_mode] +
+                    values[cpu_usage::user_mode_low_prio] +
+                    values[cpu_usage::system_mode] +
+                    values[cpu_usage::irq] +
+                    values[cpu_usage::soft_irq];
+ 
+    auto io_irq = values[cpu_usage::irq] +
+              values[cpu_usage::iowait] +
+              values[cpu_usage::soft_irq];
+ 
+    // "steal" is stolen time: the time spent in other operating systems when
+    // running in a virtualized environment.
+    auto steal = values[cpu_usage::steal];
+ 
+    // "guest" is the ninth value, it is the time spent funning a virtual CPU
+    // for a guest operating system.
+    auto guest = values[cpu_usage::guest];
+ 
+    return std::make_tuple( total_jiffies, system_usage, io_irq, steal, guest );
+}
+ 
+int main( int argc, char** argv )
+{
+  auto time1 = cpu_load();
+  std::this_thread::sleep_for( std::chrono::seconds(1) );
+  auto time2 = cpu_load();
+ 
+  auto total  = difference<totals::jiffies>(time2, time1);
+  auto work   = difference<totals::system_usage>(time2, time1);
+  auto io_irq = difference<totals::io_irq>(time2, time1);
+  auto stole  = difference<totals::steal>(time2, time1);
+  auto guest  = difference<totals::guest>(time2, time1);
+  auto percent = (work/total)*100;
+  std::cout << "CPU Load: " << percent << "\n";
+ 
+  if( io_irq )
+    std::cout << "CPU time waiting for IO & irq handling "
+            << (io_irq/total)*100 << "%\n";
+ 
+  if( stole )
+    std::cout << "CPU percent used for another VM: " << (stole/total)*100;
+ 
+  if( guest )
+    std::cout << "CPU percent used for running a guest OS: " << (guest/total)*100;
+ 
+  return EXIT_SUCCESS;
+}
+```
+
+# JSON example
+With the normal C++ json library you can just write normal C++: Json can be treated as string literals, or STL like containers (https://github.com/nlohmann/json/#stl-like-access), with ease.
+```
+#include <sstream>
+#include "json.hpp" // Normal C++ Json Library: https://github.com/nlohmann/json/
+                    // https://github.com/nlohmann/json/#examples
+ 
+void example() {
+  // Write json.
+  const nlohmann::json ping =
+  {
+    {"messageId", to_string(uuid)},
+    {"event", "mcuPing"},
+    {"source", "mcu"},  // Source must be "mcu", the MCUFE looks for that value.
+    {"sourceId", i.binding_key()}, // The mcu binding key.
+    {"version", "1.0"},
+    {"timestamp", time_stamp.count()}, // Timestamp: milliseconds since epoch.
+  };
+  // create object from string literal
+  json j = "{ \"happy\": true, \"pi\": 3.141 }"_json;
+ 
+  // or even nicer with a raw string literal
+  auto j2 = R"(
+  {
+    "happy": true,
+    "pi": 3.141
+  }
+  )"_json;
+  // deserialize from standard input
+  json j;
+  std::cin >> j;
+ 
+  // serialize to standard output
+  std::cout << j;
+ 
+  // the setw manipulator was overloaded to set the indentation for pretty printing
+  std::cout << std::setw(4) << j << std::endl; 
+}
+```
+reference : https://github.com/nlohmann/json/#examples
+
+# UTF 8 Handling
+```
+#include <iostream>
+#include <string>
+#include <locale>
+#include <codecvt>
+#include <iomanip>
+ 
+// utility function for output
+void hex_print(const std::string& s)
+{
+    std::cout << std::hex << std::setfill('0');
+    for(unsigned char c : s)
+        std::cout << std::setw(2) << static_cast<int>(c) << ' ';
+    std::cout << std::dec << '\n';
+}
+ 
+int main()
+{
+    // wide character data
+    std::wstring wstr =  L"z\u00df\u6c34\U0001d10b"; // or L"zß水𝄋"
+ 
+    // wide to UTF-8
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> conv1;
+    std::string u8str = conv1.to_bytes(wstr);
+    std::cout << "UTF-8 conversion produced " << u8str.size() << " bytes:\n";
+    hex_print(u8str);
+ 
+    // wide to UTF-16le
+    std::wstring_convert<std::codecvt_utf16<wchar_t, 0x10ffff, std::little_endian>> conv2;
+    std::string u16str = conv2.to_bytes(wstr);
+    std::cout << "UTF-16le conversion produced " << u16str.size() << " bytes:\n";
+    hex_print(u16str);
+}
+```
+# File Writer
+boost::asio::posix::stream_descriptor can be initialized with a file descriptor to start an non-blocking I/O operation on that file descriptor. In the example, stream is linked to the file descriptor STDOUT_FILENO to write a string asynchronously to the standard output stream.
+Posix Stream Descriptor
+```
+#include <boost/asio/io_service.hpp>
+#include <boost/asio/posix/stream_descriptor.hpp>
+#include <boost/asio/write.hpp>
+#include <boost/system/error_code.hpp>
+#include <iostream>
+#include <unistd.h>
+ 
+using namespace boost::asio;
+ 
+int main()
+{
+  io_service ioservice;
+ 
+  posix::stream_descriptor stream{ioservice, STDOUT_FILENO};
+  auto handler = [](const boost::system::error_code&, std::size_t) {
+    std::cout << ", world!\n";
+  };
+  async_write(stream, buffer("Hello"), handler);
+ 
+  ioservice.run();
+}
+```
+
+# ASIO & Threads
+```
+#include <boost/asio/io_service.hpp>
+#include <boost/asio/steady_timer.hpp>
+#include <chrono>
+#include <thread>
+#include <iostream>
+ 
+using namespace boost::asio;
+ 
+int main()
+{
+  io_service ioservice1;
+  io_service ioservice2;
+ 
+  steady_timer timer1{ioservice1, std::chrono::seconds{3}};
+  timer1.async_wait([](const boost::system::error_code &ec)
+    { std::cout << "3 sec\n"; });
+ 
+  steady_timer timer2{ioservice2, std::chrono::seconds{3}};
+  timer2.async_wait([](const boost::system::error_code &ec)
+    { std::cout << "3 sec\n"; });
+ 
+  std::thread thread1{[&ioservice1](){ ioservice1.run(); }};
+  std::thread thread2{[&ioservice2](){ ioservice2.run(); }};
+  thread1.join();
+  thread2.join();
+}
+```
+
+# Naive Sharing
+
+Some simple example code of sharing a socket between two (or more) processes. parent process would call bind(), listen() etc, the child processes would just process requests by accept(), send(), recv() etc. This is just an example to show some networking code.
+
+http://stackoverflow.com/questions/670891/is-there-a-way-for-multiple-processes-to-share-a-listening-socket
+```
+#include <cstdlib>
+#include <iostream>
+#include <boost/asio.hpp>
+#include <string>
+using boost::asio::ip::tcp;
+ 
+int main()
+{
+  boost::asio::io_service io_service;
+  tcp::acceptor acceptor(io_service, tcp::endpoint(tcp::v4(), 8888));
+ 
+  const std::string msg = fork() ? "hello from parent" : "hello from child";
+  while(true)
+  {
+    boost::asio::ip::tcp::socket socket(io_service);
+    acceptor.accept(socket);
+    std::cout << msg << ": got connection\n";
+    boost::asio::write(socket, boost::asio::buffer(msg + "\n"));
+  }
+ 
+  return EXIT_SUCCESS;
+}
+```
+
+# Leaky Bucket
+The leaky bucket is an algorithm that may be used to determine whether some sequence of discrete events conforms to defined limits on their average and peak rates or frequencies. Wikipedia: https://en.wikipedia.org/wiki/Leaky_bucket
+
+```
+namespace lb // leaky bucket
+{
+  // Class std::chrono::steady_clock represents a monotonic clock.
+  // The time points of this clock cannot decrease as physical time
+  // moves forward. This clock is not related to wall clock time
+  // (for example, it can be time since last reboot), and is most
+  // suitable for measuring intervals.
+  using clock = std::chrono::steady_clock;
+ 
+  struct token_bucket
+  {
+    double tokens_ = 0;
+    double capacity_ = 0;
+    double fill_rate_ = 0;
+    clock::time_point time_stamp_{clock::now()};
+  };
+ 
+    bool consume(const double& tokens, token_bucket& tb)
+  {
+    if(tokens <= tb.tokens_)
+      tb.tokens_ -= tokens;
+    else
+      return false;
+    return true;
+  }
+ 
+  auto get_tokens(token_bucket& tb) noexcept
+  {
+    const auto now = clock::now();
+ 
+    if(tb.tokens_ < tb.capacity_)
+    {
+      const auto delta = tb.fill_rate_*(now - tb.time_stamp_).count();
+      tb.tokens_ = std::min(tb.capacity_, tb.tokens_ + delta);
+    }
+ 
+    return tb.time_stamp_ = clock::now(), tb.tokens_;
+  }
+}
+```
