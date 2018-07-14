@@ -759,9 +759,9 @@ void example() {
   const nlohmann::json ping =
   {
     {"messageId", to_string(uuid)},
-    {"event", "mcuPing"},
-    {"source", "mcu"},  // Source must be "mcu", the MCUFE looks for that value.
-    {"sourceId", i.binding_key()}, // The mcu binding key.
+    {"event", "Ping"},
+    {"source", "mcu"},  
+    {"sourceId", i.binding_key()}, 
     {"version", "1.0"},
     {"timestamp", time_stamp.count()}, // Timestamp: milliseconds since epoch.
   };
