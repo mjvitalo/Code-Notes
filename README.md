@@ -1200,3 +1200,62 @@ int main()
     return 0;  
 }
 ```
+# Serialize
+
+Here is an example of persisting the contents of a class to a file and then recovering. Versioning is taken care of also and we can specify the version number for each class type if we like. Somethings to keep in mind are:
+
+    * We only need to write the serialize() function.
+    * We only need to pick out what elements of the class need to be serialized.
+    * The Archive can be a file, a stream, a shared memory segment, memory mapped file, or a database: any type of storage or stream.
+
+
+```C++
+struct detail
+{
+  std::string stuff_ = "details, details";
+  unsigned more_stuff_ = 42;
+};
+ 
+struct super
+{
+  unsigned call_id_ = 0;
+  unsigned conference_id_ = 0;
+ 
+  std::string name_;
+  std::vector<detail> details_;
+};
+ 
+template<typename Archive>
+void serialize(Archive& archive, detail& d, const unsigned int version)
+{
+  archive & d.stuff_;
+  archive & d.more_stuff_;
+}
+ 
+template<typename Archive>
+void serialize(Archive& archive, super& s, const unsigned int version)
+{
+  archive & s.call_id_;
+  archive & s.conference_id_ ;
+  archive & s.name_;
+  archive & s.details_;
+}
+ 
+int main()
+{
+  const super s{3,33, "super", {{"stuff", 2}, {"other stuff", 3}}};
+  super rs;
+  {
+    std::fstream archive_file("archive.data");
+    boost::archive::text_oarchive out_archive(archive_file);
+    out_archive << s;
+  }
+  {
+    std::fstream archive_file("archive.data");
+    boost::archive::text_iarchive in_archive(archive_file);
+    in_archive >> rs;
+  }
+ 
+  return EXIT_SUCCESS;
+}
+```
