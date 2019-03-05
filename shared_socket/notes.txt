@@ -1,3 +1,6 @@
+##To Run
+docker_run --net=host dev ./server
+
 Server.cpp is some example C++ code to do what is given as an example in python from:
 http://stackoverflow.com/questions/670891/is-there-a-way-for-multiple-processes-to-share-a-listening-socket
 
