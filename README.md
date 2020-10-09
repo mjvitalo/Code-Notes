@@ -1,3 +1,4 @@
+
 # Code-Notes
 Examples and explanations from different sources and experts about techniques I have found useful.
 
@@ -1257,5 +1258,700 @@ int main()
   }
  
   return EXIT_SUCCESS;
+}
+```
+
+# Method Signature Checks at Compile Time
+
+https://stackoverflow.com/questions/47698552/how-to-check-if-template-argument-is-a-callable-with-a-given-signature
+
+# Log
+
+A standard logging function that handles different types and captures line, file, and function information with the use of macros looks like:
+```C++
+#include <iostream>
+#include <utility>
+#include <experimental/source_location>
+ 
+template <typename... Ts>
+struct log_info
+{   
+    log_info(Ts&&... ts, const std::experimental::source_location& loc = std::experimental::source_location::current())
+    {
+        std::cout << loc.function_name() << " line " << loc.line() << ": ";
+        ((std::cout << std::forward<Ts>(ts) << " "), ...);
+        std::cout << std::endl;
+    }
+};
+ 
+template <typename... Ts>
+log_info(Ts&&...) -> log_info<Ts...>;
+ 
+int main()
+{
+    log_info(5, 'A', 3.14f, "foo");
+    log_info("bar", 123, 2.72);
+}
+```
+# Storing a Parameter Pack in a std::tuple
+
+From https://www.murrayc.com/permalink/2015/12/05/modern-c-variadic-template-parameters-and-tuples/
+```C++
+template <class... T_values>
+class Thing {
+public:
+void something(T_values... values) {
+tuple = std::tuple<T_values...>(values...);
+}
+  
+private:
+std::tuple<T_values..> tuple_;
+};
+```
+
+And from https://stackoverflow.com/questions/28033251/can-you-extract-types-from-template-parameter-function-signature
+```C++
+#include <tuple>
+ 
+struct type; // You can leave this undefined, because the template is
+             // supposed to be instantiated with a function type, and
+             // that is matched by the specialization below.
+ 
+template<typename R, typename... Args>
+struct type<R(Args...)>
+{
+    // Just use R and Args... as you with here..
+};
+```
+And here is a possible usage example (live demo on Coliru):
+```
+#include <tuple>
+#include <type_traits>
+ 
+template<typename F, typename T, typename U>
+decltype(auto) apply_invoke(F&& func, T&& first, U&& tuple) {
+    return std::apply(std::forward<F>(func),
+      std::tuple_cat(std::forward_as_tuple(std::forward<T>(first)),
+           std::forward<U>(tuple)));
+}
+ 
+template<typename S>
+struct signature;
+ 
+template<typename R, typename... Args>
+struct signature<R(Args...)>
+{
+    using return_type = R;
+    using argument_type = std::tuple<Args...>;
+};
+ 
+int main()
+{
+    using ret = signature<void(int, double)>::return_type;
+    using arg1 = std::tuple_element_t<0, signature<void(int, double)>::argument_type>;
+    using arg2 = std::tuple_element_t<1, signature<void(int, double)>::argument_type>;
+ 
+    static_assert(std::is_same<ret, void>{}, "!");
+    static_assert(std::is_same<arg1, int>{}, "!");
+    static_assert(std::is_same<arg2, double>{}, "!");
+}
+```
+
+# Call RPC example.
+
+Pull argument types from method signature, create temporaries that will be used to unpack the header, invoke the function.
+
+Run online: https://gcc.godbolt.org/z/AsVizl
+
+```C++
+#include <functional>
+#include <utility>
+#include <iostream>
+#include <vector>
+#include <tuple>
+#include <memory>
+#include <future>
+#include <variant>
+#include <array>
+ 
+template <typename... T>
+using TupleNR_t = std::tuple<typename std::decay<T>::type...>;
+ 
+template<typename R, typename T, typename ...Args>
+struct function_traits
+{
+    static const size_t nargs = sizeof...(Args);
+    using arg_t = TupleNR_t<Args...>;
+    TupleNR_t<Args...> data;
+     
+    R (T::*method_)(Args...) = nullptr;
+     
+    function_traits(R(T::*p)(Args...)) : method_{p} {}
+ 
+    template <size_t i>
+    struct arg
+    {
+        typedef typename std::tuple_element<i, std::tuple<Args...>>::type type;
+    };
+};
+ 
+template<typename R, typename T, typename... Args>
+function_traits<R, T, Args...> rpc_fn(R(T::*mp)(Args...))
+{
+    return {mp};
+}
+ 
+template<class...Args>
+void for_each_arg(Args&&...args) {
+  auto print = [](auto v) { std::cout << "param is " << v << "\n";};
+  (print(std::forward<Args>(args)),...); 
+}
+ 
+template<typename... Args> inline                                                                                    
+void get_args(Args&&... args)                                                    
+{  
+   std::cout << "here we go\n";
+   for_each_arg(args...);
+  (std::cout << ... << args);                                                                                                 
+}
+ 
+template <typename... Args>
+struct Payload
+{ 
+  Payload(Args&&... args) :    
+    data(args...) 
+  {   
+  }
+   
+  void apply() const
+  {
+    // all of this washes away at compile time.   
+    auto triv_obj = [](auto a)
+    {
+      std::cout << "objec is: " << typeid(a).name() << "\n";
+    };     
+    std::apply([triv_obj](auto&&... a){((triv_obj(a), ...));}, data);
+  }
+ 
+  TupleNR_t<Args...> data;
+};
+ 
+template <class... Args>
+auto delay_invoke(Args... args)
+{
+  Payload pa(std::forward<Args>(args)...);
+  return [pa]() -> decltype(auto) {         
+     pa.apply();   
+  };
+}
+ 
+template<typename R, typename T, typename... Args>
+decltype(auto) marshall_from(R(T::*mp)(Args...))
+{      
+    TupleNR_t<Args...> args;
+    return [f = rpc_fn(mp), params = args]()
+    {  
+        auto fun = [](auto&&... args)
+        {
+            delay_invoke(std::forward<decltype(args)>(args)...)();
+        };
+        std::apply(fun, f.data);
+    };
+};
+ 
+struct super final
+{
+  //std::vector<int> a_;
+  int a_ = 5;
+  int test(std::string j, super k, std::string a = "super", int b = 1){ return b;}
+};
+ 
+int main()
+{ 
+  auto a = rpc_fn(&super::test);
+  auto mf = marshall_from(&super::test);
+  mf();
+ 
+  auto s = std::make_shared<super>(); 
+  return 0;
+}
+  ```
+  
+#  Make RPC form method signature
+Run online: https://gcc.godbolt.org/z/hIjPc-
+```C++
+#include <functional>
+#include <utility>
+#include <iostream>
+#include <vector>
+#include <tuple>
+#include <memory>
+#include <future>
+#include <variant>
+#include <array>
+ 
+template <typename... T>
+using TupleNR_t = std::tuple<typename std::decay<T>::type...>;
+ 
+template <typename R, typename T, typename... Args>
+struct alignas(sizeof(void*)) payload
+{
+  using Func_t = R (T::*)(Args&&...);
+  payload(R T::* f, Args&&... args)
+    : func_(f),
+      data(args...)
+  {
+    // all of this washes away at compile time.
+    auto triv_obj = [](auto a)
+    {
+      static_assert(
+        std::is_trivially_default_constructible
+        <decltype(a)>::value,
+        "Trivial Default Ctor required");
+      static_assert(
+        std::is_trivially_constructible
+        <decltype(a)>::value,
+        "Trivial Ctor required");
+      static_assert(std::is_trivially_destructible
+        <decltype(a)>::value,
+        "Trivial Dtor required");
+    };
+    std::apply([triv_obj](auto&&... a)
+      {((triv_obj(a), ...));}, data);
+  }
+ 
+  Func_t func_;
+  TupleNR_t<Args...> data;
+};
+ 
+template <typename Tup, typename R, typename F, std::size_t... Idxs>
+struct tuple_runtime_access_table {
+  using tuple_type = Tup;
+  using return_type = R;
+  using converter_fun = F;
+ 
+  template <std::size_t N>
+  static return_type access_tuple(tuple_type& t, converter_fun& f) {
+    return f(std::get<N>(t));
+  }
+ 
+  using accessor_fun_ptr = return_type(*)(tuple_type&, converter_fun&);
+  const static auto table_size = sizeof...(Idxs);
+ 
+  constexpr static std::array<accessor_fun_ptr, table_size> lookup_table = {
+    {&access_tuple<Idxs>...}
+  };
+};
+ 
+template <typename R, typename Tup, typename F, std::size_t... Idxs>
+auto call_access_function(Tup& t, std::size_t i, F f, std::index_sequence<Idxs...>) {
+  auto& table = tuple_runtime_access_table<Tup, R, F, Idxs...>::lookup_table;
+  auto* access_function = table[i];
+  return access_function(t, f);
+}
+ 
+template <typename Tup> struct common_tuple_access;
+ 
+template <typename... Ts>
+struct common_tuple_access<std::tuple<Ts...>> {
+  using type = std::variant<std::reference_wrapper<Ts>...>;
+};
+ 
+template <typename T1, typename T2>
+struct common_tuple_access<std::pair<T1, T2>> {
+  using type = std::variant<std::reference_wrapper<T1>, std::reference_wrapper<T2>>;
+};
+ 
+template <typename T, auto N>
+struct common_tuple_access<std::array<T, N>> {
+  using type = std::variant<std::reference_wrapper<T>>;
+};
+ 
+template <typename Tup>
+using common_tuple_access_t = typename common_tuple_access<Tup>::type;
+ 
+template <typename Tup>
+auto runtime_get(Tup& t, std::size_t i) {
+  return call_access_function<common_tuple_access_t<Tup>>(
+    t, i,
+    [](auto & element){ return std::ref(element); },
+    std::make_index_sequence<std::tuple_size_v<Tup>>{}
+  );
+}
+ 
+template <typename Tup> class tuple_iterator {
+  Tup& t;
+  size_t i;
+public:
+  tuple_iterator(Tup& tup, size_t idx)
+    : t{tup}, i{idx}
+  {}
+      
+  tuple_iterator& operator++() {
+    ++i; return *this;
+  }
+  bool operator==(tuple_iterator const& other) const {
+    return std::addressof(other.t) == std::addressof(t)
+      && other.i == i;
+  }
+       
+  bool operator!=(tuple_iterator const& other) const {
+    return !(*this == other);
+  }
+ 
+  auto operator*() const{
+    return runtime_get(t, i);
+  }
+};
+ 
+template <typename Tup>
+class to_range {
+  Tup& t;
+public:   
+  to_range(Tup& tup) : t{tup}{}
+  auto begin() {
+    return tuple_iterator{t, 0};
+  }
+  auto end() {
+    return tuple_iterator{t, std::tuple_size_v<Tup>};
+  }
+          
+  auto operator[](std::size_t i){
+    return runtime_get(t, i);
+  }
+};
+// type list
+template <class T, class Tuple>
+struct Index;
+ 
+template <class T, class... Types>
+struct Index<T, std::tuple<T, Types...>> {
+    static constexpr std::size_t value = 0;
+};
+ 
+template <class T, class U, class... Types>
+struct Index<T, std::tuple<U, Types...>> {
+    static constexpr std::size_t value = 1 + Index<T, std::tuple<Types...>>::value;
+};
+ 
+struct rpc_header
+{
+  size_t method_id_;
+  std::string object_id_;
+};
+ 
+template<typename Callable, typename ...Args>
+void marshall_from(Callable callable, Args... args)
+{
+    auto m = [f = std::move(callable), ...params = std::move(args)]()
+    {
+        (std::cout << "From: " << ... << params);
+    };
+};
+ 
+template<typename Callable, typename ...Args>
+void marshall_to(Callable callable, Args... args)
+{
+    auto m = [f = std::move(callable), ...params = std::move(args)]()
+    {
+        (std::cout << "To: " << ... << params);
+    };  
+     
+    return m();
+};
+ 
+template<typename T>
+struct instances
+{
+   static inline std::vector<std::tuple<std::string, std::shared_ptr<T>>> instances_;
+   static auto get_instance(const std::string& oid)
+   {   
+      for(auto [id, e] : instances_)
+      {
+          if(id == oid)
+            return e;           
+      }
+      return nullptr;
+   }
+ 
+   static void add_instance(const std::string& oid, std::shared_ptr<T> o)
+   {   
+      for(auto [id, e] : instances_)
+      {
+          if(id == oid)
+            return;           
+      }
+      instances_.emplace_back(oid, o);     
+   }  
+};
+ 
+namespace rpc_detail
+{
+    template <class T>
+    struct is_reference_wrapper : std::false_type {};
+ 
+    template <class U>
+    struct is_reference_wrapper<std::reference_wrapper<U>> : std::true_type {};
+ 
+    template <class T>
+    constexpr bool is_reference_wrapper_v = is_reference_wrapper<T>::value;
+     
+    template <class T, class Type, class T1, class... Args>
+    decltype(auto) INVOKE(Type T::* f, std::string&& id, Args&&... args)
+    {
+        const std::shared_ptr<T> t1 = instances<T>::lookup(id);
+         
+        if constexpr (std::is_member_function_pointer_v<decltype(f)>) {
+            if constexpr (std::is_base_of_v<T, std::decay_t<T1>>)
+                return (std::forward<T1>(t1).*f)(std::forward<Args>(args)...);
+            else if constexpr (is_reference_wrapper_v<std::decay_t<T1>>)
+                return (t1.get().*f)(std::forward<Args>(args)...);
+            else
+                return ((*std::forward<T1>(t1)).*f)(std::forward<Args>(args)...);
+        } else {
+            static_assert(std::is_member_object_pointer_v<decltype(f)>);
+            static_assert(sizeof...(args) == 0);
+            if constexpr (std::is_base_of_v<T, std::decay_t<T1>>)
+                return std::forward<T1>(t1).*f;
+            else if constexpr (is_reference_wrapper_v<std::decay_t<T1>>)
+                return t1.get().*f;
+            else
+                return (*std::forward<T1>(t1)).*f;
+        }
+    }
+     
+    template <class F, class... Args>
+    decltype(auto) INVOKE(std::string id, F&& f, Args&&... args)
+    {
+        return std::forward<F>(f)(std::forward<Args>(args)...);
+    }
+} // namespace detail
+ 
+template< class F, class... Args>
+std::invoke_result_t<F, Args...> rpc_invoke(std::string id, F&& f, Args&&... args)
+  noexcept(std::is_nothrow_invocable_v<F, Args...>)
+{
+    return rpc_detail::INVOKE(std::forward<F>(f), id, std::forward<Args>(args)...);
+}
+ 
+template<typename ...Methods>
+constexpr auto make_interface(Methods...methods)
+{   
+  auto lambda = []<typename T>(T f)
+  {
+    if constexpr (std::is_member_function_pointer_v<decltype(f)>)
+    {  
+      return std::mem_fn(f);
+    }
+    else   
+      return  f;
+  }; 
+ 
+  return std::make_tuple(lambda(methods)...); 
+}
+ 
+template<typename ...Classes>                                                                                                  
+struct rpc_classes
+{
+    static inline std::tuple<instances<Classes>...> classes_;  
+};
+ 
+template<typename I, typename Methods>
+struct rpc_wrapper
+{
+  static I instances_;
+  static Methods rpc_;
+};
+ 
+template<typename Class, typename ...Methods>
+auto generate_rpc(Methods... methods)
+{
+ return rpc_wrapper<Class, decltype(make_interface(methods...))>();  
+}
+ 
+struct my_class
+{
+  virtual std::string call(std::string a, int b)
+  {
+      return "call";
+  }
+ 
+  void stop()
+  {
+  }
+};
+ 
+struct conference
+{
+  std::vector<std::string> c_;   
+  void add(const std::string& c)
+  {
+      c_.push_back(c);
+  }
+ 
+  void nothing() {}
+};
+ 
+struct other_class : my_class
+{
+  std::string call(std::string a, int b) override
+  {
+      std::cout << "\n other_class " << "\n";     
+      return "";
+  } 
+};
+ 
+void create_bridge(std::string id)
+{
+    std::cout << "creating brdige: " << id << "\n";
+}
+ 
+std::vector<conference> conferences;
+//static instances<my_class> my_class_list;
+//static instances<other_class> other_class_list;
+using rpc_types = rpc_classes<my_class, other_class, conference>;
+rpc_types rpc_objects;
+     
+template<typename R, typename T, typename... Args>                                                                         
+decltype(auto) find_class_index(R(T::*mp)(Args...))                                                                        
+{                                                                                                                              
+  return Index<instances<T>, decltype(rpc_types::classes_)>::value;                                                                           
+}
+ 
+auto rpc = make_interface(&create_bridge, &other_class::call, &my_class::call, &my_class::stop, &conference::add);
+ 
+auto lookup = [](auto callable)
+{
+  auto lambda = []<typename T>(T f)
+  {
+    if constexpr (std::is_member_function_pointer_v<decltype(f)>)
+    {  
+      return std::mem_fn(f);
+    }
+    else   
+      return  f;
+  }; 
+  return std::get<decltype(lambda(callable))>(rpc);       
+};
+ 
+//auto get_method = [](size_t id)
+//{
+//    return std::get<>(rpc);
+//}
+ 
+auto find_pos = [](auto callable)
+{       
+  auto lambda = []<typename T>(T f)
+  {
+    if constexpr (std::is_member_function_pointer_v<decltype(f)>)
+    {  
+      return std::mem_fn(f);
+    }
+    else   
+      return  f;
+  }; 
+  return Index<decltype(lambda(callable)), decltype(rpc)>::value;       
+};
+ 
+template<class M, class T, typename ...Args>
+auto  remote_invoke(M T::* pm, const std::string& callid, Args... args) -> typename std::future<typename std::result_of<decltype(pm)(T*, Args...)>::type>
+{ 
+  using R = std::result_of< decltype(pm)(T*, Args...)>::type;
+  std::promise<R> promise;  
+  const size_t method_id = find_pos(pm);
+  std::cout << "method id " << method_id << "\n";
+  return promise.get_future();
+}
+ 
+struct remote_my_class
+{
+  std::string call(std::string a, int b)
+  {
+      std::cout << "\nremote " << "\n";
+      auto f = remote_invoke(&my_class::call, "callid", a, b);
+      return "";
+  } 
+};
+ 
+template <typename T, typename Tuple>
+struct has_type;
+ 
+template <typename T, typename... Us>
+struct has_type<T, std::tuple<Us...>> : std::disjunction<std::is_same<T, Us>...> {};
+  template<typename T, typename... Ts>                                                                                           
+  struct tuple_contains;                                                                                                         
+                                                                                                                                   
+  template<typename T, typename... Ts>                                                                                           
+  struct tuple_contains : std::disjunction<std::is_same<T, Ts>...>                                                               
+  {};                                                                                                                            
+                                                                                                                                   
+  template<typename F>                                                                                                           
+  inline constexpr bool is_in_interface = tuple_contains<F, decltype(rpc)>::value;                                                    
+ 
+template<typename Method>
+constexpr inline bool function_info(Method m)
+{   
+    return is_in_interface<Method>;     
+};
+ 
+template<typename F>
+struct header
+{
+    header(F f) : method_id(find_pos(f)) {}
+    size_t method_id;
+};
+ 
+template<>
+struct header<size_t>
+{   
+    header(size_t t) : method_id(t) {}
+    size_t method_id = 0;
+};
+ 
+int main()
+{   
+    std::string s = "callid";
+    my_class m;
+    header h(&conference::add);
+    header dh(find_pos(&conference::add));
+ 
+    size_t cb = find_pos(&create_bridge);
+    auto cbc = to_range(rpc)[cb];
+     
+ 
+    auto p = std::make_shared<other_class>();
+    instances<other_class>::add_instance(s, p); 
+    auto class_index = find_class_index(&other_class::call);
+    std::cout << "class index is " << class_index << "\n";
+ 
+    auto instance = to_range(rpc_types::classes_)[class_index];
+    //auto object = instance.get_instance(s);   
+        
+    auto pos = find_pos(&other_class::call);
+    auto mm = to_range(rpc)[pos];
+     
+    auto f = std::bind(mm, m, "pl", 11);
+     
+     marshall_to(mm, "super", 7);
+    std::cout << "Pos is: " << pos << "\n";
+ 
+    if(function_info(&conference::nothing))
+    {
+        std::cout << "Is a method\n";
+    }
+ 
+    auto one_function = lookup(&my_class::call);
+     
+    marshall_to(one_function, "super", 7);
+     
+    int i;
+     
+    remote_my_class rc;
+    rc.call("super", 9);
+    
+    //instances<my_class>::add_instance("super", p);
+    std::cout << one_function(m, "super", 1) << "\n";
+     
+  return 0;
 }
 ```
