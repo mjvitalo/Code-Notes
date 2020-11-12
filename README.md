@@ -1513,7 +1513,7 @@ int main()
 }
   ```
   
-#  Make RPC form method signature
+#  Make RPC from method signature
 Run online: https://gcc.godbolt.org/z/hIjPc-
 ```C++
 #include <functional>
