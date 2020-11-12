@@ -43,6 +43,36 @@ Herb Sutter's proposal for atomic shared pointers has a  correct  and  ABA safe 
 
 http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4058.pdf
 
+# Log Function
+A standard logging function that handles different types and captures line, file, and function information without the use of macros looks like:
+
+```c++
+// Gcc8 & c++17 alow you to write the following.
+
+#include <iostream>
+#include <utility>
+#include <experimental/source_location>
+ 
+template <typename... Ts>
+struct log_info
+{   
+    log_info(Ts&&... ts, const std::experimental::source_location& loc = std::experimental::source_location::current())
+    {
+        std::cout << loc.function_name() << " line " << loc.line() << ": ";
+        ((std::cout << std::forward<Ts>(ts) << " "), ...);
+        std::cout << std::endl;
+    }
+};
+ 
+template <typename... Ts>
+log_info(Ts&&...) -> log_info<Ts...>;
+ 
+int main()
+{
+    log_info(5, 'A', 3.14f, "foo");
+    log_info("bar", 123, 2.72);
+}
+```
 
 # Hardware Transactional Memory
 
