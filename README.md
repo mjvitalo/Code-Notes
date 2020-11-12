@@ -44,6 +44,7 @@ Herb Sutter's proposal for atomic shared pointers has a  correct  and  ABA safe 
 http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4058.pdf
 
 # Log Function
+Test code [here on Compiler Explorer](https://gcc.godbolt.org/z/re6z7q). 
 A standard logging function that handles different types and captures line, file, and function information without the use of macros looks like:
 
 ```c++
